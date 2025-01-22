@@ -214,6 +214,18 @@ resource "aws_iot_thing_type" "test" {
   properties {
     description           = "MyDescription"
     searchable_attributes = ["foo", "bar", "baz"]
+	mqtt5_configuration {
+		propagating_attributes = [
+			{
+				user_property_key = "thing_attr_test"
+				thing_attribute   = "attribute"
+			},
+			{
+				user_property_key = "connection_attr_test"
+				connection_attribute = "iot:ClientId"
+			}
+		]
+	}
   }
 }
 `, rName, deprecated)

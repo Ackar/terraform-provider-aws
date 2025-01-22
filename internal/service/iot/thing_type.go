@@ -56,9 +56,9 @@ func resourceThingType() *schema.Resource {
 				ValidateFunc: validThingTypeName,
 			},
 			names.AttrProperties: {
-				Type:             schema.TypeList,
-				Optional:         true,
-				MaxItems:         1,
+				Type:     schema.TypeList,
+				Optional: true,
+				// MaxItems:         3,
 				DiffSuppressFunc: verify.SuppressMissingOptionalConfigurationBlock,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
@@ -77,6 +77,25 @@ func resourceThingType() *schema.Resource {
 							Elem: &schema.Schema{
 								Type:         schema.TypeString,
 								ValidateFunc: validThingTypeSearchableAttribute,
+							},
+						},
+						"mqtt5_configuration": {
+							Type:     schema.TypeList,
+							Optional: true,
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"propagating_attributes": {
+										Type:     schema.TypeList,
+										Optional: true,
+										MaxItems: 3,
+										Elem: &schema.Schema{
+											// TODO: key validation
+											Type:     schema.TypeMap,
+											Optional: true,
+											Elem:     &schema.Schema{Type: schema.TypeString},
+										},
+									},
+								},
 							},
 						},
 					},
@@ -244,11 +263,37 @@ func expandThingTypeProperties(config map[string]interface{}) *awstypes.ThingTyp
 		SearchableAttributes: flex.ExpandStringValueSet(config["searchable_attributes"].(*schema.Set)),
 	}
 
+	if v, ok := config["mqtt5_configuration"]; ok {
+		if configs, ok := v.([]interface{}); ok && len(configs) > 0 {
+			properties.Mqtt5Configuration = expandMQTT5Configuration(configs[0].(map[string]interface{}))
+		}
+	}
+
 	if v, ok := config[names.AttrDescription]; ok && v.(string) != "" {
 		properties.ThingTypeDescription = aws.String(v.(string))
 	}
 
 	return properties
+}
+
+func expandMQTT5Configuration(config map[string]interface{}) *awstypes.Mqtt5Configuration {
+	var res awstypes.Mqtt5Configuration
+	if v, ok := config["propagating_attributes"]; ok {
+		if v, ok := v.([]interface{}); ok {
+			propagatingAttributes := make([]awstypes.PropagatingAttribute, 0, len(v))
+			for _, item := range v {
+				item := item.(map[string]interface{})
+				propagatingAttributes = append(propagatingAttributes, awstypes.PropagatingAttribute{
+					ConnectionAttribute: aws.String(item["connection_attribute"].(string)),
+					ThingAttribute:      aws.String(item["thing_attribute"].(string)),
+					UserPropertyKey:     aws.String(item["user_property_key"].(string)),
+				})
+			}
+			res.PropagatingAttributes = propagatingAttributes
+		}
+	}
+
+	return &res
 }
 
 func flattenThingTypeProperties(s *awstypes.ThingTypeProperties) []map[string]interface{} {
@@ -263,6 +308,26 @@ func flattenThingTypeProperties(s *awstypes.ThingTypeProperties) []map[string]in
 
 	m[names.AttrDescription] = aws.ToString(s.ThingTypeDescription)
 	m["searchable_attributes"] = s.SearchableAttributes
+
+	if s.Mqtt5Configuration != nil {
+		var propagatingAttributes []interface{}
+		for _, item := range s.Mqtt5Configuration.PropagatingAttributes {
+			attr := map[string]interface{}{}
+			if item.ConnectionAttribute != nil {
+				attr["connection_attribute"] = *item.ConnectionAttribute
+			}
+			if item.ThingAttribute != nil {
+				attr["thing_attribute"] = *item.ThingAttribute
+			}
+			if item.UserPropertyKey != nil {
+				attr["user_property_key"] = *item.UserPropertyKey
+			}
+			propagatingAttributes = append(propagatingAttributes, attr)
+		}
+		m["mqtt5"] = map[string]interface{}{
+			"propagating_attributes": propagatingAttributes,
+		}
+	}
 
 	return []map[string]interface{}{m}
 }
